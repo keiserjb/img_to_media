@@ -1,0 +1,73 @@
+<?php
+
+/**
+ * @file
+ * Primary module hooks for Find and Create Media Entities module.
+ */
+
+use Drupal\file\Entity\File;
+use Drupal\media\Entity\Media;
+use Drupal\node\NodeInterface;
+
+function img_to_media_update_9072(array $context) {
+  // Specify that access checking should be performed.
+  $query = \Drupal::entityQuery('node')->accessCheck(TRUE);
+  $nids = $query->execute();
+
+  // Load nodes using NodeStorageInterface.
+  $node_storage = \Drupal::entityTypeManager()->getStorage('node');
+  $nodes = $node_storage->loadMultiple($nids);
+
+  foreach ($nodes as $node) {
+    find_and_create_media_entities($node);
+  }
+}
+
+function find_and_create_media_entities(NodeInterface $node) {
+  $img_tags = [];
+  preg_match_all('/<img[^>]+src="([^"]+)".+alt="([^"]*)"[^>]*>/i', $node->body->value, $img_tags);
+
+
+  foreach ($img_tags[1] as $index => $src) {
+    // Create a media entity from the relative image URL.
+    $alt_text = $img_tags[2][$index];
+    $media_entity = create_media_from_image($src, $alt_text);
+
+    if ($media_entity) {
+      // Replace the <img> tag with a reference to the media entity.
+      $replacement = '<drupal-media data-entity-type="media" data-entity-uuid="' . $media_entity->uuid() . '"></drupal-media>';
+      $node->body->value = str_replace($img_tags[0][$index], $replacement, $node->body->value);
+      $node->save();
+    }
+  }
+}
+
+function create_media_from_image($relative_image_url, $alt_text) {
+  // Construct the file URI based on the relative image URL.
+  $file_uri = 'public://' . str_replace('/sites/default/files/', '', $relative_image_url);
+
+  if (file_exists(\Drupal::service('file_system')->realpath($file_uri))) {
+    // Load the image file from the URI.
+    $file = File::create([
+      'uri' => $file_uri,
+    ]);
+    $file->save();
+
+    // Create a media entity from the image file.
+    $media_entity = Media::create([
+      'bundle' => 'image',
+      'name' => basename($relative_image_url),
+      'uid' => 1,
+      'field_media_image' => [
+        'target_id' => $file->id(),
+        'alt' => $alt_text, // Save alt text in the 'alt' property
+      ],
+    ]);
+    $media_entity->save();
+
+    return $media_entity;
+  }
+
+  return NULL;
+}
+

@@ -1,0 +1,5 @@
+name: Img to Media
+type: module
+description: Find the images, make media.
+package: Custom
+core_version_requirement: ^9 || ^10
