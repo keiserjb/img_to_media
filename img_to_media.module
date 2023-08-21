@@ -9,7 +9,7 @@ use Drupal\file\Entity\File;
 use Drupal\media\Entity\Media;
 use Drupal\node\NodeInterface;
 
-function img_to_media_update_9072(array $context) {
+function img_to_media_update_1001(array $context) {
   // Specify that access checking should be performed.
   $query = \Drupal::entityQuery('node')->accessCheck(TRUE);
   $nids = $query->execute();
