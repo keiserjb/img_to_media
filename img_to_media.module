@@ -1,5 +1,6 @@
 <?php
 
+
 /**
  * @file
  * Primary module hooks for Find and Create Media Entities module.
@@ -8,10 +9,15 @@
 use Drupal\file\Entity\File;
 use Drupal\media\Entity\Media;
 use Drupal\node\NodeInterface;
+use Drupal\paragraphs\Entity\Paragraph;
 
-function img_to_media_update_1001(array $context) {
-  // Specify that access checking should be performed.
-  $query = \Drupal::entityQuery('node')->accessCheck(TRUE);
+/**
+ * Implements hook_update_N().
+ */
+function img_to_media_update_8031() {
+  $query = \Drupal::entityQuery('node')
+    ->condition('type', 'article')
+    ->accessCheck(TRUE);
   $nids = $query->execute();
 
   // Load nodes using NodeStorageInterface.
@@ -25,33 +31,87 @@ function img_to_media_update_1001(array $context) {
 
 function find_and_create_media_entities(NodeInterface $node) {
   $img_tags = [];
-  preg_match_all('/<img[^>]+src="([^"]+)".+alt="([^"]*)"[^>]*>/i', $node->body->value, $img_tags);
+  preg_match_all(
+    '/<img[^>]+src="([^"]+)".+alt="([^"]*)"[^>]*>/iU',
+    $node->body->value,
+    $img_tags,
+    PREG_SET_ORDER
+  );
 
-
-  foreach ($img_tags[1] as $index => $src) {
-    // Create a media entity from the relative image URL.
-    $alt_text = $img_tags[2][$index];
+  $replacements = [];
+  foreach ($img_tags as $img_tag) {
+    $src = $img_tag[1];
+    $alt_text = $img_tag[2];
     $media_entity = create_media_from_image($src, $alt_text);
 
     if ($media_entity) {
       // Replace the <img> tag with a reference to the media entity.
-      $replacement = '<drupal-media data-entity-type="media" data-entity-uuid="' . $media_entity->uuid() . '"></drupal-media>';
-      $node->body->value = str_replace($img_tags[0][$index], $replacement, $node->body->value);
-      $node->save();
+      $replacement = '<drupal-media data-entity-type="media" data-entity-uuid="'
+        . $media_entity->uuid() . '"></drupal-media>';
+      $replacements[$img_tag[0]] = $replacement;
     }
   }
+
+  // Apply all replacements to the node's body value.
+  $updated_body = str_replace(
+    array_keys($replacements),
+    array_values($replacements),
+    $node->body->value
+  );
+
+  // Update the node's body field value with the updated body.
+  $node->body->value = $updated_body;
+  $node->save();
+
+  // Create a new paragraph entity.
+  $paragraph = Paragraph::create([
+    'type' => 'ama_body', // Replace with the correct paragraph type.
+    'ama_body' => array(
+      "value"  =>  $updated_body,
+      "format" => "full_html"
+    ),
+  ]);
+  $paragraph->save();
+
+  // Attach the paragraph to the node.
+  $node->field_components->appendItem(['target_id' => $paragraph->id()]);
+  $node->save();
+
+
+
+
 }
 
 function create_media_from_image($relative_image_url, $alt_text) {
   // Construct the file URI based on the relative image URL.
-  $file_uri = 'public://' . str_replace('/sites/default/files/', '', $relative_image_url);
+  $file_uri = 'public://' . str_replace(
+      '/sites/default/files/',
+      '',
+      $relative_image_url
+    );
 
+  // Check if the file already exists.
   if (file_exists(\Drupal::service('file_system')->realpath($file_uri))) {
-    // Load the image file from the URI.
-    $file = File::create([
-      'uri' => $file_uri,
-    ]);
-    $file->save();
+    // Check if the file has already been uploaded as a managed file.
+    $query = \Drupal::entityQuery('file')
+      ->condition('uri', $file_uri)
+      ->accessCheck(FALSE)
+      ->execute();
+    $existing_files = \Drupal::entityTypeManager()
+      ->getStorage('file')
+      ->loadMultiple($query);
+
+    if (!empty($existing_files)) {
+      // Load the first existing file.
+      $file = reset($existing_files);
+    }
+    else {
+      // Load the image file from the URI.
+      $file = File::create([
+        'uri' => $file_uri,
+      ]);
+      $file->save();
+    }
 
     // Create a media entity from the image file.
     $media_entity = Media::create([
@@ -60,7 +120,7 @@ function create_media_from_image($relative_image_url, $alt_text) {
       'uid' => 1,
       'field_media_image' => [
         'target_id' => $file->id(),
-        'alt' => $alt_text, // Save alt text in the 'alt' property
+        'alt'       => $alt_text, // Save alt text in the 'alt' property
       ],
     ]);
     $media_entity->save();
