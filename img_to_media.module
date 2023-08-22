@@ -14,7 +14,7 @@ use Drupal\paragraphs\Entity\Paragraph;
 /**
  * Implements hook_update_N().
  */
-function img_to_media_update_8031() {
+function img_to_media_update_10004() {
   $query = \Drupal::entityQuery('node')
     ->condition('type', 'article')
     ->accessCheck(TRUE);
@@ -59,27 +59,26 @@ function find_and_create_media_entities(NodeInterface $node) {
     $node->body->value
   );
 
-  // Update the node's body field value with the updated body.
+   // Update the node's body field value with the updated body.
   $node->body->value = $updated_body;
   $node->save();
 
-  // Create a new paragraph entity.
+  // Create a new paragraph entity using the updated body content.
   $paragraph = Paragraph::create([
-    'type' => 'ama_body', // Replace with the correct paragraph type.
-    'ama_body' => array(
-      "value"  =>  $updated_body,
-      "format" => "full_html"
-    ),
+    'type' => 'body',
+    'field_body_paragraph' => [
+      'value' => $updated_body,
+      'format' => 'full_html', // Set the desired text format
+    ],
   ]);
   $paragraph->save();
 
-  // Attach the paragraph to the node.
-  $node->field_components->appendItem(['target_id' => $paragraph->id()]);
+  // Set the paragraph entity as a reference on the node.
+  $node->set('field_paragraphs', $paragraph);
+
+  // Save the node and paragraph.
   $node->save();
-
-
-
-
+  $paragraph->save();
 }
 
 function create_media_from_image($relative_image_url, $alt_text) {
