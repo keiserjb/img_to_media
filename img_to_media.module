@@ -14,7 +14,7 @@ use Drupal\paragraphs\Entity\Paragraph;
 /**
  * Implements hook_update_N().
  */
-function img_to_media_update_10004() {
+function img_to_media_update_10007() {
   $query = \Drupal::entityQuery('node')
     ->condition('type', 'article')
     ->accessCheck(TRUE);
@@ -46,7 +46,7 @@ function find_and_create_media_entities(NodeInterface $node) {
 
     if ($media_entity) {
       // Replace the <img> tag with a reference to the media entity.
-      $replacement = '<drupal-media data-entity-type="media" data-entity-uuid="'
+      $replacement = '<drupal-media data-entity-type="media" data-align="center" data-entity-uuid="'
         . $media_entity->uuid() . '"></drupal-media>';
       $replacements[$img_tag[0]] = $replacement;
     }
@@ -59,14 +59,14 @@ function find_and_create_media_entities(NodeInterface $node) {
     $node->body->value
   );
 
-   // Update the node's body field value with the updated body.
+  // Update the node's body field value with the updated body.
   $node->body->value = $updated_body;
   $node->save();
 
   // Create a new paragraph entity using the updated body content.
   $paragraph = Paragraph::create([
-    'type' => 'body',
-    'field_body_paragraph' => [
+    'type' => 'ama_body',
+    'ama_body' => [
       'value' => $updated_body,
       'format' => 'full_html', // Set the desired text format
     ],
@@ -74,7 +74,7 @@ function find_and_create_media_entities(NodeInterface $node) {
   $paragraph->save();
 
   // Set the paragraph entity as a reference on the node.
-  $node->set('field_paragraphs', $paragraph);
+  $node->set('field_components', $paragraph);
 
   // Save the node and paragraph.
   $node->save();
