@@ -9,7 +9,6 @@
 use Drupal\file\Entity\File;
 use Drupal\media\Entity\Media;
 use Drupal\node\NodeInterface;
-use Drupal\paragraphs\Entity\Paragraph;
 
 /**
  * Implements hook_update_N().
@@ -46,7 +45,8 @@ function find_and_create_media_entities(NodeInterface $node) {
 
     if ($media_entity) {
       // Replace the <img> tag with a reference to the media entity.
-      $replacement = '<drupal-media data-entity-type="media" data-align="center" data-entity-uuid="'
+      $replacement
+        = '<drupal-media data-entity-type="media" data-align="center" data-entity-uuid="'
         . $media_entity->uuid() . '"></drupal-media>';
       $replacements[$img_tag[0]] = $replacement;
     }
@@ -62,23 +62,6 @@ function find_and_create_media_entities(NodeInterface $node) {
   // Update the node's body field value with the updated body.
   $node->body->value = $updated_body;
   $node->save();
-
-  // Create a new paragraph entity using the updated body content.
-  $paragraph = Paragraph::create([
-    'type' => 'ama_body',
-    'ama_body' => [
-      'value' => $updated_body,
-      'format' => 'full_html', // Set the desired text format
-    ],
-  ]);
-  $paragraph->save();
-
-  // Set the paragraph entity as a reference on the node.
-  $node->set('field_components', $paragraph);
-
-  // Save the node and paragraph.
-  $node->save();
-  $paragraph->save();
 }
 
 function create_media_from_image($relative_image_url, $alt_text) {

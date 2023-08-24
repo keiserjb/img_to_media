@@ -1,0 +1,5 @@
+services:
+  img_to_media.command:
+    class: \Drupal\img_to_media\Commands\ImgToMediaCommand
+    tags:
+      - { name: drush.command }

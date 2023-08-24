@@ -1,0 +1,124 @@
+<?php
+
+namespace Drupal\img_to_media\Commands;
+
+use Drush\Commands\DrushCommands;
+use Drupal\file\Entity\File;
+use Drupal\media\Entity\Media;
+use Drupal\node\NodeInterface;
+
+
+/**
+ * Custom Drush command for changing images to media.
+ *
+ * @DrushCommands
+ */
+class ImgToMediaCommand extends DrushCommands {
+
+  /**
+   * Converts images to media in body field.
+   *
+   * @command image-to-media
+   * @aliases itm
+   */
+  public function ImgToMedia() {
+    $query = \Drupal::entityQuery('node')
+      ->condition('type', 'article')
+      ->accessCheck(TRUE);
+    $nids = $query->execute();
+
+    // Load nodes using NodeStorageInterface.
+    $node_storage = \Drupal::entityTypeManager()->getStorage('node');
+    $nodes = $node_storage->loadMultiple($nids);
+
+    foreach ($nodes as $node) {
+      find_and_create_media_entities($node);
+    }
+  }
+
+  function find_and_create_media_entities(NodeInterface $node) {
+    $img_tags = [];
+    preg_match_all(
+      '/<img[^>]+src="([^"]+)".+alt="([^"]*)"[^>]*>/iU',
+      $node->body->value,
+      $img_tags,
+      PREG_SET_ORDER
+    );
+
+    $replacements = [];
+    foreach ($img_tags as $img_tag) {
+      $src = $img_tag[1];
+      $alt_text = $img_tag[2];
+      $media_entity = create_media_from_image($src, $alt_text);
+
+      if ($media_entity) {
+        // Replace the <img> tag with a reference to the media entity.
+        $replacement
+          = '<drupal-media data-entity-type="media" data-align="center" data-entity-uuid="'
+          . $media_entity->uuid() . '"></drupal-media>';
+        $replacements[$img_tag[0]] = $replacement;
+      }
+    }
+
+    // Apply all replacements to the node's body value.
+    $updated_body = str_replace(
+      array_keys($replacements),
+      array_values($replacements),
+      $node->body->value
+    );
+
+    // Update the node's body field value with the updated body.
+    $node->body->value = $updated_body;
+    $node->save();
+  }
+
+  function create_media_from_image($relative_image_url, $alt_text) {
+    // Construct the file URI based on the relative image URL.
+    $file_uri = 'public://' . str_replace(
+        '/sites/default/files/',
+        '',
+        $relative_image_url
+      );
+
+    // Check if the file already exists.
+    if (file_exists(\Drupal::service('file_system')->realpath($file_uri))) {
+      // Check if the file has already been uploaded as a managed file.
+      $query = \Drupal::entityQuery('file')
+        ->condition('uri', $file_uri)
+        ->accessCheck(FALSE)
+        ->execute();
+      $existing_files = \Drupal::entityTypeManager()
+        ->getStorage('file')
+        ->loadMultiple($query);
+
+      if (!empty($existing_files)) {
+        // Load the first existing file.
+        $file = reset($existing_files);
+      }
+      else {
+        // Load the image file from the URI.
+        $file = File::create([
+          'uri' => $file_uri,
+        ]);
+        $file->save();
+      }
+
+      // Create a media entity from the image file.
+      $media_entity = Media::create([
+        'bundle' => 'image',
+        'name' => basename($relative_image_url),
+        'uid' => 1,
+        'field_media_image' => [
+          'target_id' => $file->id(),
+          'alt'       => $alt_text, // Save alt text in the 'alt' property
+        ],
+      ]);
+      $media_entity->save();
+
+      return $media_entity;
+    }
+
+    return NULL;
+  }
+}
+
